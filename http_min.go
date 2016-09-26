@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -143,7 +144,7 @@ func changeUrlToPathInHeader(buf []byte) []byte {
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(time.Millisecond * 4000))
+	conn.SetDeadline(time.Now().Add(time.Millisecond * 5000))
 
 	connOpenFlag := []bool{true, true}
 
@@ -174,13 +175,12 @@ func handleConnection(conn net.Conn) {
 	log.Printf("connect the host %s\n", string(host))
 	server, err := net.Dial("tcp", string(host))
 	if err != nil {
-		log.Printf("cant connect host : %s", string(host))
-		fmt.Println("%v\n", server)
+		log.Printf("cant connect host : %s, and the err is :%v", string(host), err)
 		return
 	}
 
 	defer server.Close()
-	server.SetDeadline(time.Now().Add(time.Millisecond * 3000))
+	server.SetDeadline(time.Now().Add(time.Millisecond * 7000))
 
 	go fwData(server, conn, []bool{false, false}, connOpenFlag)
 
@@ -201,6 +201,7 @@ func handleConnection(conn net.Conn) {
 	}
 
 	for {
+		time.Sleep(500 * time.Millisecond)
 		if false == connOpenFlag[0] && false == connOpenFlag[1] {
 			return
 		}
@@ -208,9 +209,15 @@ func handleConnection(conn net.Conn) {
 }
 
 func main() {
-	ln, err := net.Listen("tcp", ":6010")
+	var host, port string
+	flag.StringVar(&host, "h", "127.0.0.1", "which host do you want to listen")
+	flag.StringVar(&port, "p", "6010", "which port do you want to listen")
+	flag.Parse()
+
+	ln, err := net.Listen("tcp", host+":"+port)
+	log.Print("listen on ", host+":"+port)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	for {
 		conn, err := ln.Accept()
