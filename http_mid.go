@@ -143,22 +143,31 @@ func changeUrlToPathInHeader(buf []byte) []byte {
 	return reg2.ReplaceAll(tmp, rep2)
 }
 
-type HandlerWrapper struct {
-	wrapped http.Handler
-}
-
 func handleConnection(w http.ResponseWriter, r *http.Request) {
-	log.Print("come handleConnection")
-	r.ParseForm()
-	fmt.Println(r.Form)
-	fmt.Println("path", r.URL.Path)
-	fmt.Println("scheme", r.URL.Scheme)
-	fmt.Println(r.Form["url_long"])
-	for k, v := range r.Form {
-		fmt.Println("key:", k)
-		fmt.Println("val:", v)
+	log.Printf("%v", r.Method)
+	log.Printf("%v", r.URL.Host)
+
+	log.Printf("connect the host %s\n", r.URL.Host)
+	server, err := net.Dial("tcp", r.URL.Host)
+	if err != nil {
+		log.Printf("cant connect host : %s, and the err is :%v", r.URL.Host, err)
+		return
 	}
-	fmt.Fprintf(w, "Hello astaxie!")
+	defer server.Close()
+	server.SetDeadline(time.Now().Add(time.Millisecond * 7000))
+
+	if "CONNECT" == r.Method {
+		_, e := w.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+		if e != nil {
+			fmt.Printf("Error to send message because of %s\n", e.Error())
+			return
+		} else {
+			log.Printf("---- %v", r.Method)
+			//			r.Header.Del("Proxy-Connection")
+			//			r.Header.Del("Connection")
+		}
+	} else {
+	}
 }
 
 func main() {
@@ -169,7 +178,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:         host + ":" + port,
-		Handler:      &HandlerWrapper{},
+		Handler:      http.HandlerFunc(handleConnection),
 		ReadTimeout:  1 * time.Hour,
 		WriteTimeout: 1 * time.Hour,
 	}
