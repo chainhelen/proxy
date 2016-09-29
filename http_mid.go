@@ -13,46 +13,6 @@ import (
 	//	"bufio"
 )
 
-func getRemoteInfoFromHeader(buf []byte) ([]byte, []byte) {
-	//find the lineBuf start
-	hostStart := bytes.Index(buf, []byte("Host:"))
-	if -1 == hostStart {
-		return []byte(""), []byte("")
-	}
-	hostStart += 6
-
-	//find the lineBuf end
-	lineBuf := buf[hostStart:]
-	hostEnd := bytes.Index(lineBuf, []byte("\r\n"))
-	if -1 == hostEnd {
-		return []byte(""), []byte("")
-	}
-
-	//get the lineBuf
-	lineBuf = lineBuf[:hostEnd]
-
-	//get the address port
-	portIndex := bytes.Index(lineBuf, []byte(":"))
-	if -1 != portIndex {
-		address := make([]byte, len(lineBuf[:portIndex]))
-		copy(address, lineBuf[:portIndex])
-
-		port := make([]byte, len(lineBuf[(portIndex+1):]))
-		copy(port, lineBuf[(portIndex+1):])
-
-		return address, port
-	} else {
-		address := make([]byte, len(lineBuf))
-		copy(address, lineBuf)
-
-		port := make([]byte, len([]byte("80")))
-		copy(port, []byte("80"))
-
-		return address, port
-	}
-	return []byte(""), []byte("")
-}
-
 func fwData(sock1, sock2 net.Conn, p, connOpenFlag []bool) {
 
 	defer func() {
