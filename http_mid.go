@@ -144,6 +144,17 @@ func changeUrlToPathInHeader(buf []byte) []byte {
 }
 
 func pipe(a, b net.Conn) error {
+	er1ch := make(chan error, 1)
+	er2ch := make(chan error, 1)
+
+	go writeTo(a, b, er1ch)
+	go writeTo(b, a, er2ch)
+
+	select {
+	case err = <-er1ch:
+	case err = <-er2ch:
+	}
+
 	return nil
 }
 
