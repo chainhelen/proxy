@@ -143,11 +143,17 @@ func changeUrlToPathInHeader(buf []byte) []byte {
 	return reg2.ReplaceAll(tmp, rep2)
 }
 
-func handleConnection(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%v", r.Method)
-	log.Printf("%v", r.URL.Host)
+func pipe(a, b net.Conn) error {
+	return nil
+}
 
-	log.Printf("connect the host %s\n", r.URL.Host)
+func handleConnection(w http.ResponseWriter, r *http.Request) {
+	client, _, err := r.(http.Hijacker).Hijack()
+	if nil != err {
+		log.Printf("client cant hijack")
+		return
+	}
+
 	server, err := net.Dial("tcp", r.URL.Host)
 	if err != nil {
 		log.Printf("cant connect host : %s, and the err is :%v", r.URL.Host, err)
@@ -157,16 +163,23 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	server.SetDeadline(time.Now().Add(time.Millisecond * 7000))
 
 	if "CONNECT" == r.Method {
-		_, e := w.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+		_, e := client.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 		if e != nil {
 			fmt.Printf("Error to send message because of %s\n", e.Error())
 			return
-		} else {
-			log.Printf("---- %v", r.Method)
-			//			r.Header.Del("Proxy-Connection")
-			//			r.Header.Del("Connection")
 		}
 	} else {
+		r.Header.Del("Proxy-Connection")
+		r.Header.Del("Connection")
+		if err = r.Write(server); nil != err {
+			log.Printf("Error to send message because of %s\n", eError())
+			return
+		}
+	}
+	err = pipe(client, server)
+	if err != nil {
+		log.Printf("Error pipe because of %s\n", err.Error())
+		return
 	}
 }
 
