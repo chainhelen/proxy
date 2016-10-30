@@ -58,7 +58,7 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("connect the host %s\n", r.URL.Host)
 	if errSer != nil {
-		log.Printf("cant connect host : %s, and the err is :%v\n", r.URL.Host, err)
+		log.Printf("cant connect host : %s, and the err is :%v\n", r.URL.Host, errSer)
 		return
 	}
 	defer server.Close()
