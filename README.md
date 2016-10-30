@@ -19,6 +19,8 @@ go build http_min.go
 ```
 ./http_min -h "127.0.0.1" -p "2002"
 ```
+### http_mid.go
+使用了net的http，编译以及参数跟上面雷同，支持http和https协议
 
 -----------
 MIT 协议
