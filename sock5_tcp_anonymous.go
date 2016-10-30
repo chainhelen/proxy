@@ -2,10 +2,13 @@ package main
 
 import (
 	//	"bytes"
+	"encoding/binary"
 	"flag"
+	"io"
 	"log"
 	"net"
-	"time"
+	"strconv"
+	//	"time"
 )
 
 type Sock5AuthType int
@@ -93,16 +96,52 @@ func readFromConn(conn net.Conn) []byte {
 	return buf[:buflen]
 }
 
-func getHost(curConnType Sock5ConnType, bufbody []byte) string {
+func getHostPortAndCutBufbodyDown(curConnType Sock5ConnType, bufbody []byte) string {
+	host := ""
 	if Sock5ConnTypeTcpIp == curConnType {
+		host = string(net.IPv4(bufbody[0], bufbody[1], bufbody[2], bufbody[3]))
+		log.Printf("getHost the if is %v\n", host)
 	}
 	if Sock5ConnTypeTcpDomain == curConnType {
+		len := bufbody[0]
+		host = string(bufbody[1 : len+1])
+		host += ":"
+		port := binary.BigEndian.Uint32(append([]byte{0, 0}, bufbody[len+1:len+3]...))
+		host += strconv.FormatUint(uint64(port), 10)
+
+		//cutdown
+		bufbody = bufbody[len+3:]
 	}
+	return host
+}
+
+func writeTo(from, to net.Conn, errch chan error) error {
+	_, err := io.Copy(from, to)
+	return err
+}
+
+func pipe(a, b net.Conn) error {
+	errch := make(chan error, 2)
+
+	go writeTo(a, b, errch)
+	go writeTo(b, a, errch)
+
+	err1, err2 := <-errch, <-errch
+
+	if nil != err1 {
+		log.Printf("pipe err type 1 : %v\n", err1)
+	}
+
+	if nil != err2 {
+		log.Printf("pipe err type 2 : %v\n", err1)
+	}
+
+	return nil
 }
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(time.Millisecond * 5000))
+	//	conn.SetDeadline(time.Now().Add(time.Millisecond * 1000))
 
 	//auth
 	buf := readFromConn(conn)
@@ -110,13 +149,11 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 	curAuthType := getSock5AuthType(buf)
-	log.Printf("1.read from conn package %v, auth type is type %v\n", buf, curAuthType)
+	log.Printf("1.\tread from conn package %v, auth type is type %v\n", buf, curAuthType)
 	if Sock5AuthTypeAnonymous != curAuthType {
-		log.Printf("we cann't support the cur sock5authtype\n")
+		log.Printf("\t\twe cann't support the cur sock5authtype\n")
 		return
 	}
-	w := []byte{0x05, 0x00}
-	log.Printf("the test is %v", w)
 	conn.Write([]byte{0x05, 0x00})
 
 	//package
@@ -125,16 +162,38 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 	curConnType := getSock5ConnType(bufbody)
-	t := (bufbody[0]).(type)
-	log.Printf("isss t %v", t)
-	log.Printf("2.from conn 4 bytes of package are %v, conn type if type %v \n", bufbody[:4], curConnType)
-	if Sock5ConnTypeTcpDomain != curConnType || Sock5ConnTypeTcpIp != curConnType {
+
+	//t := (bufbody[0]).(type)
+	//log.Printf("isss t %v", t)
+	log.Printf("2.\tfrom conn 4 bytes of package are %v, conn type if type %v \n", bufbody[:4], curConnType)
+
+	if Sock5ConnTypeTcpDomain != curConnType && Sock5ConnTypeTcpIp != curConnType {
 		log.Printf("cann't support the cur Sock5connyype\n")
 		return
 	}
 
 	//create server conn
-	host := getHost(curConnType, bufbody)
+	bufbody = bufbody[4:]
+	log.Printf("\t\tget the body %v\n", bufbody)
+	hostAndPort := getHostPortAndCutBufbodyDown(curConnType, bufbody)
+	log.Printf("\t\tget the hostAndPort %s\n", hostAndPort)
+
+	server, errSer := net.Dial("tcp", hostAndPort)
+	if errSer != nil {
+		log.Printf("\t\tcant connect host : %s, and the err is :%v\n", hostAndPort, errSer)
+		return
+	}
+	log.Printf("\t\tconnect server host : %s ok", hostAndPort)
+	defer server.Close()
+	//	server.SetDeadline(time.Now().Add(time.Millisecond * 1000))
+	conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01, 0x17, 0x7a})
+
+	err := pipe(conn, server)
+	if err != nil {
+		log.Printf("Error pipe because of %s\n", err.Error())
+		return
+	}
+
 }
 
 func main() {
