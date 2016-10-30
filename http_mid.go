@@ -1,133 +1,64 @@
 package main
 
 import (
-	"bytes"
+	//	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
-	"regexp"
+	"strings"
+	//	"regexp"
 	"time"
 	//  "reflect"
 	//	"bufio"
 )
 
-func fwData(sock1, sock2 net.Conn, p, connOpenFlag []bool) {
-
-	defer func() {
-		if false == p[0] && false == p[1] {
-			connOpenFlag[0] = false
-			connOpenFlag[1] = false
-		}
-	}()
-
-	const BUF_LEN = 2048
-	tmp := make([]byte, BUF_LEN)
-	pipeflag := true
-
-	for {
-		if !pipeflag {
-			return
-		}
-		n, rerr := sock1.Read(tmp)
-		if rerr != nil {
-			if rerr.Error() != "EOF" {
-				log.Print("io.read err ", rerr)
-				return
-			}
-			pipeflag = false
-		} else {
-			if 0 != n {
-				_, werr := sock2.Write(tmp[:n])
-				if werr != nil {
-					log.Print("io.write err %v", werr)
-					return
-				}
-			} else {
-				pipeflag = false
-			}
-		}
-	}
-}
-
-func readFromConn(conn net.Conn) []byte {
-	const HTTP_LEN = 20480
-	const BUF_LEN = 1024
-
-	buf := make([]byte, HTTP_LEN)
-	buflen := 0
-	tmp := make([]byte, BUF_LEN)
-
-	for {
-		n, err := conn.Read(tmp)
-		if err != nil {
-			if err.Error() != "EOF" {
-				log.Print("io.error  ", err)
-				return nil
-			}
-			break
-		}
-
-		if buflen+n > HTTP_LEN {
-			log.Print("HTTP is too langer")
-			return nil
-		}
-		if 0 != n {
-			copy(buf[buflen:], tmp[:n])
-			buflen += n
-		}
-
-		if n < BUF_LEN {
-			break
-		}
-	}
-	return buf[:buflen]
-}
-
-func changeUrlToPathInHeader(buf []byte) []byte {
-	reg, err := regexp.Compile("(http://[^/]+|Keep-Alive:.+\r\n|Proxy-Connection:.+\r\n)|Connection:.+\r\n")
-	if nil != err {
-		log.Print("reg is not right", err)
-		return []byte("")
-	}
-	rep := []byte("")
-	tmp := reg.ReplaceAll(buf, rep)
-
-	reg2, err2 := regexp.Compile("\r\n\r\n")
-	if nil != err {
-		log.Print("reg2, is not right", err2)
-	}
-	rep2 := []byte("\r\nConnection:close\r\n\r\n")
-
-	return reg2.ReplaceAll(tmp, rep2)
+func writeTo(from, to net.Conn, errch chan error) error {
+	_, err := io.Copy(from, to)
+	return err
 }
 
 func pipe(a, b net.Conn) error {
-	er1ch := make(chan error, 1)
-	er2ch := make(chan error, 1)
+	errch := make(chan error, 2)
 
-	go writeTo(a, b, er1ch)
-	go writeTo(b, a, er2ch)
+	go writeTo(a, b, errch)
+	go writeTo(b, a, errch)
 
-	select {
-	case err = <-er1ch:
-	case err = <-er2ch:
+	err1, err2 := <-errch, <-errch
+
+	if nil != err1 {
+		log.Printf("pipe err type 1 : %v\n", err1)
+	}
+
+	if nil != err2 {
+		log.Printf("pipe err type 2 : %v\n", err1)
 	}
 
 	return nil
 }
 
 func handleConnection(w http.ResponseWriter, r *http.Request) {
-	client, _, err := r.(http.Hijacker).Hijack()
+	client, _, err := w.(http.Hijacker).Hijack()
+	log.Printf("read from client :%v\n", r.URL.String())
+
 	if nil != err {
-		log.Printf("client cant hijack")
+		log.Printf("client cant hijack\n")
 		return
 	}
 
-	server, err := net.Dial("tcp", r.URL.Host)
-	if err != nil {
-		log.Printf("cant connect host : %s, and the err is :%v", r.URL.Host, err)
+	colonIndex := strings.Index(r.URL.Host, ":")
+	var server net.Conn
+	var errSer error
+	if -1 == colonIndex {
+		server, errSer = net.Dial("tcp", r.URL.Host+":80")
+	} else {
+		server, errSer = net.Dial("tcp", r.URL.Host)
+	}
+	log.Printf("connect the host %s\n", r.URL.Host)
+	if errSer != nil {
+		log.Printf("cant connect host : %s, and the err is :%v\n", r.URL.Host, errSer)
 		return
 	}
 	defer server.Close()
@@ -142,8 +73,9 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	} else {
 		r.Header.Del("Proxy-Connection")
 		r.Header.Del("Connection")
+		log.Printf("write to server  :%s", r.URL.String())
 		if err = r.Write(server); nil != err {
-			log.Printf("Error to send message because of %s\n", eError())
+			log.Printf("Error to send message because of %v\n", err)
 			return
 		}
 	}
