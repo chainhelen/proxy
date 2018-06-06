@@ -1,4 +1,4 @@
-### http_min.go 
+### go_proxy/http_min.go 
 仅使用net库，而没有使用net/http库编写成的,
 支持http代理，支持https。
 
@@ -19,7 +19,7 @@ go build http_min.go
 ```
 ./http_min -h "127.0.0.1" -p "2002"
 ```
-### http_mid.go
+### go_proxy/http_mid.go
 使用了net的http，编译以及参数跟上面雷同，支持http和https协议
 
 -----------
