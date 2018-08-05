@@ -28,6 +28,7 @@ int main() {
     // fork
     pid_t pid;
     int index;
+	initProcess();
     for (int i = 0;i < cpuNum;i++) {
         index = i;
         if(socketpair(AF_UNIX, SOCK_STREAM, 0, process[i].channel) < 0) {
